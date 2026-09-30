@@ -81,7 +81,7 @@
       animation: fadeUp 0.6s ease both;
     }
     .brand-mark {
-      width: 48px; height: 48px; border-radius: 12px;
+      width: 72px; height: 72px; border-radius: 14px;
       object-fit: cover; border: 1px solid var(--gold-line);
       background: #0a0e18;
     }
@@ -334,12 +334,12 @@
       <!-- LOGO_PLACEHOLDER_BASE64: paste a small PNG/SVG data URL here if you prefer offline embed. -->
       <img
         class="brand-mark"
-        src="/brand/seafinance-logo-mark.png"
-        width="48"
-        height="48"
-        alt=""
+        src="/brand/seafinance-logo-ship.jpg"
+        width="72"
+        height="72"
+        alt="SeaFinance logo"
         decoding="async"
-        onerror="this.style.display='none'"
+        fetchpriority="high"
       />
       <span class="brand-word" aria-label="SeaFinance">SeaFinance</span>
     </header>
