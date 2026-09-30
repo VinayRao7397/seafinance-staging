@@ -362,8 +362,10 @@
       <p class="lede">Join the waitlist for SeaFinance Tax — NRI status and ITR filing built for Indian seafarers, not generic spreadsheets.</p>
 
       <!--
-        FormSubmit: first submission to a new recipient triggers an email verification
-        to vinay678b@gmail.com. Confirm that once, then leads land in the inbox.
+        Dual submit: FormSubmit emails vinay678b@gmail.com AND Edge waitlistSignup
+        stores a clean row (Name, Rank, Email, Phone, Comments, Signed up IST).
+        Sheet append needs Vinay's one-time Apps Script (see scripts/waitlist-apps-script.gs).
+        FormSubmit: first submission may need email verification once.
       -->
       <form
         class="card"
@@ -379,6 +381,7 @@
         <input type="hidden" name="_captcha" value="false" />
         <input type="hidden" name="_honey" value="" style="display:none !important" tabindex="-1" autocomplete="off" aria-hidden="true" />
         <input type="text" name="_gotcha" value="" class="sr-only" tabindex="-1" autocomplete="off" aria-hidden="true" />
+        <input type="hidden" name="source_page" value="tax-waitlist" />
 
         <div class="field" data-field="name">
           <label for="name">Full name <span class="req" aria-hidden="true">*</span></label>
@@ -431,7 +434,7 @@
         </div>
 
         <div class="field" data-field="notes">
-          <label for="notes">Anything we should know?</label>
+          <label for="notes">Comments</label>
           <textarea id="notes" name="notes" maxlength="500" placeholder="e.g. FY stuck due to leave days, CDC gaps, previous CA issues…"></textarea>
           <p class="hint">Optional · max 500 characters</p>
         </div>
@@ -563,12 +566,40 @@
         return digits.length >= 8 && digits.length <= 15;
       }
 
+      var EDGE_URL = "https://rybjghyttcmvtlqakrxm.supabase.co/functions/v1/waitlistSignup";
+      var ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ5YmpnaHl0dGNtdnRscWFrcnhtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA0MDE0MDMsImV4cCI6MjEwNTk3NzQwM30.L4mbYyKWRO8XNeUfQfL32ol1moAMqNU1OHM0QMgRgFY";
+      var FORMSUBMIT_AJAX = "https://formsubmit.co/ajax/vinay678b@gmail.com";
+
+      function istNow() {
+        try {
+          return new Intl.DateTimeFormat("en-IN", {
+            timeZone: "Asia/Kolkata",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "numeric",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: true
+          }).format(new Date());
+        } catch (e) {
+          return new Date().toISOString();
+        }
+      }
+
       if (form) {
         form.addEventListener("submit", function (e) {
+          e.preventDefault();
+
           var name = (form.name && form.name.value || "").trim();
           var email = (form.email && form.email.value || "").trim();
           var phone = (form.phone && form.phone.value || "").trim();
+          var rank = (form.rank && form.rank.value || "").trim();
+          var comments = (form.notes && form.notes.value || "").trim();
+          var fy = (form.fy_interest && form.fy_interest.value || "").trim();
           var consent = form.consent && form.consent.checked;
+          var sourcePage = (form.source_page && form.source_page.value) || "tax-waitlist";
+          var signedUp = istNow();
 
           var ok = true;
           setError("name", !name);
@@ -581,7 +612,6 @@
           if (!consent) ok = false;
 
           if (!ok) {
-            e.preventDefault();
             var first = form.querySelector(".field.error input, .field.error select, .field.error textarea, #consent");
             if (first) first.focus();
             return;
@@ -591,6 +621,93 @@
             submitBtn.classList.add("is-loading");
             submitBtn.disabled = true;
           }
+
+          // Clean structured payload for Sheet columns:
+          // Name | Rank | Email | Phone | Comments | Signed up (IST)
+          var edgeBody = {
+            name: name,
+            email: email,
+            phone: phone,
+            rank: rank,
+            comments: comments,
+            notes: comments,
+            fy_interest: fy,
+            source_page: sourcePage,
+            signed_up_ist: signedUp
+          };
+
+          var formSubmitBody = {
+            name: name,
+            email: email,
+            phone: phone,
+            rank: rank,
+            notes: comments,
+            fy_interest: fy,
+            source_page: sourcePage,
+            signed_up_ist: signedUp,
+            _subject: "SeaFinance Tax Waitlist — new signup",
+            _template: "table",
+            _captcha: "false"
+          };
+
+          function finishOk() {
+            try {
+              history.replaceState(null, "", "/tax-waitlist?success=true");
+            } catch (err) {}
+            showSuccess();
+          }
+
+          function finishErr(msg) {
+            if (submitBtn) {
+              submitBtn.classList.remove("is-loading");
+              submitBtn.disabled = false;
+            }
+            alert(msg || "Could not join waitlist. Please try again or email vinay678b@gmail.com");
+          }
+
+          var edgeOk = false;
+          var mailOk = false;
+
+          var edgeP = fetch(EDGE_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "apikey": ANON_KEY,
+              "Authorization": "Bearer " + ANON_KEY
+            },
+            body: JSON.stringify(edgeBody)
+          }).then(function (r) {
+            return r.json().then(function (j) {
+              if (!r.ok || !j || !j.success) throw new Error((j && j.error) || "save failed");
+              edgeOk = true;
+            });
+          }).catch(function (err) {
+            console.warn("waitlist edge", err);
+          });
+
+          var mailP = fetch(FORMSUBMIT_AJAX, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Accept": "application/json"
+            },
+            body: JSON.stringify(formSubmitBody)
+          }).then(function (r) {
+            return r.json().then(function (j) {
+              // FormSubmit returns {success: "..." } or similar
+              if (!r.ok) throw new Error("mail failed");
+              mailOk = true;
+              return j;
+            });
+          }).catch(function (err) {
+            console.warn("waitlist formsubmit", err);
+          });
+
+          Promise.all([edgeP, mailP]).then(function () {
+            // Prefer success if either channel worked; Edge is source of truth for Sheet/DB
+            if (edgeOk || mailOk) finishOk();
+            else finishErr("Could not join waitlist. Check your connection and try again.");
+          });
         });
 
         ["name", "email", "phone", "consent"].forEach(function (id) {
