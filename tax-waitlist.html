@@ -367,7 +367,7 @@
         method="POST"
         novalidate
       >
-        <input type="hidden" name="source_page" value="tax-waitlist" />
+        <input type="hidden" id="source_page" name="source_page" value="tax-waitlist" />
 
         <div class="field" data-field="name">
           <label for="name">Full name <span class="req" aria-hidden="true">*</span></label>
@@ -577,14 +577,19 @@
         form.addEventListener("submit", function (e) {
           e.preventDefault();
 
-          var name = (form.name && form.name.value || "").trim();
-          var email = (form.email && form.email.value || "").trim();
-          var phone = (form.phone && form.phone.value || "").trim();
-          var rank = (form.rank && form.rank.value || "").trim();
-          var comments = (form.notes && form.notes.value || "").trim();
-          var fy = (form.fy_interest && form.fy_interest.value || "").trim();
+          // Prefer getElementById — form.name can collide with HTMLFormElement.name
+          function fieldVal(id) {
+            var el = document.getElementById(id);
+            return (el && el.value || "").trim();
+          }
+          var name = fieldVal("name");
+          var email = fieldVal("email");
+          var phone = fieldVal("phone");
+          var rank = fieldVal("rank");
+          var comments = fieldVal("notes");
+          var fy = fieldVal("fy_interest");
           var consent = form.consent && form.consent.checked;
-          var sourcePage = (form.source_page && form.source_page.value) || "tax-waitlist";
+          var sourcePage = fieldVal("source_page") || (form.source_page && form.source_page.value) || "tax-waitlist";
           var signedUp = istNow();
 
           var ok = true;
@@ -623,6 +628,8 @@
             comments: comments,
             Comments: comments,
             notes: comments,
+            message: comments,
+            row: [name, rank, email, phone, comments, signedUp],
             fy_interest: fy,
             source_page: sourcePage,
             signed_up_ist: signedUp
