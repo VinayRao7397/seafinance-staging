@@ -344,16 +344,9 @@
       <span class="brand-word" aria-label="SeaFinance">SeaFinance</span>
     </header>
 
-    <!-- SUCCESS STATE (shown when ?success=true after FormSubmit redirect) -->
+    <!-- SUCCESS STATE (shown after the Edge signup succeeds) -->
     <section class="card success" id="success-panel" aria-live="polite" hidden>
-      <div class="success-check" aria-hidden="true">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#3DDC97" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M20 6L9 17l-5-5"/>
-        </svg>
-      </div>
-      <h2>You're on the list</h2>
-      <p>Thanks — we'll email you when SeaFinance Tax opens for early access. No spam.</p>
-      <a class="btn" href="https://myseafinance.com">Back to SeaFinance</a>
+      <h2>Thank you. We received your waitlist request. Stay updated.</h2>
     </section>
 
     <div class="form-block" id="form-block">
@@ -362,25 +355,18 @@
       <p class="lede">Join the waitlist for SeaFinance Tax — NRI status and ITR filing built for Indian seafarers, not generic spreadsheets.</p>
 
       <!--
-        Dual submit: FormSubmit emails vinay678b@gmail.com AND Edge waitlistSignup
-        stores a clean row (Name, Rank, Email, Phone, Comments, Signed up IST).
-        Sheet append needs Vinay's one-time Apps Script (see scripts/waitlist-apps-script.gs).
-        FormSubmit: first submission may need email verification once.
+        JavaScript intercepts this form and posts the signup to the Supabase
+        waitlistSignup Edge function, which is the source of truth for DB + Sheet.
+        FormSubmit is optional best-effort email delivery via background fetch only;
+        it can never handle navigation or block a successful Edge signup.
       -->
       <form
         class="card"
         id="waitlist-form"
-        action="https://formsubmit.co/vinay678b@gmail.com"
+        action="/tax-waitlist"
         method="POST"
         novalidate
       >
-        <!-- FormSubmit hidden fields -->
-        <input type="hidden" name="_next" value="https://myseafinance.com/tax-waitlist?success=true" />
-        <input type="hidden" name="_subject" value="SeaFinance Tax Waitlist — new signup" />
-        <input type="hidden" name="_template" value="table" />
-        <input type="hidden" name="_captcha" value="false" />
-        <input type="hidden" name="_honey" value="" style="display:none !important" tabindex="-1" autocomplete="off" aria-hidden="true" />
-        <input type="text" name="_gotcha" value="" class="sr-only" tabindex="-1" autocomplete="off" aria-hidden="true" />
         <input type="hidden" name="source_page" value="tax-waitlist" />
 
         <div class="field" data-field="name">
@@ -673,9 +659,24 @@
           }
 
           var edgeOk = false;
-          var mailOk = false;
 
-          var edgeP = fetch(EDGE_URL, {
+          // Edge is the source of truth. FormSubmit is only a best-effort,
+          // non-navigating background notification and must never gate success.
+          fetch(FORMSUBMIT_AJAX, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Accept": "application/json"
+            },
+            body: JSON.stringify(formSubmitBody)
+          }).then(function (r) {
+            if (!r.ok) throw new Error("mail failed");
+            return r;
+          }).catch(function (err) {
+            console.warn("waitlist formsubmit", err);
+          });
+
+          fetch(EDGE_URL, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -690,29 +691,9 @@
             });
           }).catch(function (err) {
             console.warn("waitlist edge", err);
-          });
-
-          var mailP = fetch(FORMSUBMIT_AJAX, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Accept": "application/json"
-            },
-            body: JSON.stringify(formSubmitBody)
-          }).then(function (r) {
-            return r.json().then(function (j) {
-              // FormSubmit returns {success: "..." } or similar
-              if (!r.ok) throw new Error("mail failed");
-              mailOk = true;
-              return j;
-            });
-          }).catch(function (err) {
-            console.warn("waitlist formsubmit", err);
-          });
-
-          Promise.all([edgeP, mailP]).then(function () {
-            // Prefer success if either channel worked; Edge is source of truth for Sheet/DB
-            if (edgeOk || mailOk) finishOk();
+          }).then(function () {
+            // Only the Edge result can show success; FormSubmit failures are ignored.
+            if (edgeOk) finishOk();
             else finishErr("Could not join waitlist. Check your connection and try again.");
           });
         });
